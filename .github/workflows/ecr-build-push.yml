@@ -1,0 +1,93 @@
+name: Build and Push to ECR
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        description: 'AWS region'
+        required: false
+        type: string
+        default: 'us-east-2'
+      dockerfile:
+        description: 'Path to Dockerfile'
+        required: false
+        type: string
+        default: 'Dockerfile'
+      context:
+        description: 'Docker build context'
+        required: false
+        type: string
+        default: '.'
+      image_tag_suffix:
+        description: 'Additional tag suffix (e.g., "nginx")'
+        required: false
+        type: string
+        default: ''
+      push_latest:
+        description: 'Also tag and push as latest'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      aws_deploy_role:
+        description: 'AWS IAM role ARN for OIDC authentication'
+        required: true
+      ecr_repository:
+        description: 'ECR repository URL (e.g., 123456789.dkr.ecr.us-east-2.amazonaws.com/myapp)'
+        required: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-region: ${{ inputs.aws_region }}
+        role-to-assume: ${{ secrets.aws_deploy_role }}
+        role-session-name: github-actions-ecr-push
+
+    - name: Log in to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push image
+      env:
+        IMAGE_TAG: ${{ github.sha }}
+        ECR_REPOSITORY: ${{ secrets.ecr_repository }}
+      run: |
+        # Build with commit SHA tag
+        docker build \
+          -t $ECR_REPOSITORY:$IMAGE_TAG \
+          -f ${{ inputs.dockerfile }} \
+          ${{ inputs.context }}
+
+        # Push commit SHA tag
+        docker push $ECR_REPOSITORY:$IMAGE_TAG
+        echo "Pushed: $ECR_REPOSITORY:$IMAGE_TAG"
+
+        # Optionally tag and push as latest
+        if [ "${{ inputs.push_latest }}" = "true" ]; then
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REPOSITORY:latest
+          docker push $ECR_REPOSITORY:latest
+          echo "Pushed: $ECR_REPOSITORY:latest"
+        fi
+
+    - name: Image details
+      env:
+        ECR_REPOSITORY: ${{ secrets.ecr_repository }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "Image pushed successfully!"
+        echo "Repository: $ECR_REPOSITORY"
+        echo "Tags: $IMAGE_TAG$([ '${{ inputs.push_latest }}' = 'true' ] && echo ', latest')"

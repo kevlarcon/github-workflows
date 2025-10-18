@@ -1,0 +1,104 @@
+name: Deploy Lambda Function
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        description: 'AWS region'
+        required: false
+        type: string
+        default: 'us-east-2'
+      function_name:
+        description: 'Lambda function name'
+        required: true
+        type: string
+      zip_file_path:
+        description: 'Path to Lambda deployment package (zip file)'
+        required: false
+        type: string
+        default: 'lambda.zip'
+      build_command:
+        description: 'Command to build Lambda package (e.g., "make lambda")'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      aws_deploy_role:
+        description: 'AWS IAM role ARN for OIDC authentication'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Build Lambda package
+      if: inputs.build_command != ''
+      run: ${{ inputs.build_command }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-region: ${{ inputs.aws_region }}
+        role-to-assume: ${{ secrets.aws_deploy_role }}
+        role-session-name: github-actions-lambda-deploy
+
+    - name: Deploy Lambda function
+      env:
+        FUNCTION_NAME: ${{ inputs.function_name }}
+        ZIP_FILE: ${{ inputs.zip_file_path }}
+        AWS_REGION: ${{ inputs.aws_region }}
+      run: |
+        echo "Updating Lambda function: $FUNCTION_NAME"
+        echo "Region: $AWS_REGION"
+        echo "Package: $ZIP_FILE"
+
+        # Verify zip file exists
+        if [ ! -f "$ZIP_FILE" ]; then
+          echo "Error: Lambda package not found at $ZIP_FILE"
+          exit 1
+        fi
+
+        # Get package size
+        SIZE=$(du -h "$ZIP_FILE" | cut -f1)
+        echo "Package size: $SIZE"
+
+        # Update function code
+        aws lambda update-function-code \
+          --function-name $FUNCTION_NAME \
+          --zip-file fileb://$ZIP_FILE \
+          --region $AWS_REGION
+
+        # Wait for update to complete
+        echo "Waiting for function update to complete..."
+        aws lambda wait function-updated \
+          --function-name $FUNCTION_NAME \
+          --region $AWS_REGION
+
+        echo "Lambda function deployed successfully!"
+
+    - name: Get function details
+      env:
+        FUNCTION_NAME: ${{ inputs.function_name }}
+        AWS_REGION: ${{ inputs.aws_region }}
+      run: |
+        echo "==> Function configuration:"
+        aws lambda get-function-configuration \
+          --function-name $FUNCTION_NAME \
+          --region $AWS_REGION \
+          --query '{
+            Runtime: Runtime,
+            Handler: Handler,
+            CodeSize: CodeSize,
+            MemorySize: MemorySize,
+            Timeout: Timeout,
+            LastModified: LastModified,
+            Version: Version
+          }' \
+          --output json
