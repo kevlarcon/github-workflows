@@ -28,6 +28,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_args:
+        description: 'Docker build arguments as JSON object (e.g., {"ARG1": "value1", "ARG2": "value2"})'
+        required: false
+        type: string
+        default: '{}'
     secrets:
       aws_deploy_role:
         description: 'AWS IAM role ARN for OIDC authentication'
@@ -65,11 +70,19 @@ jobs:
       env:
         IMAGE_TAG: ${{ github.sha }}
         ECR_REPOSITORY: ${{ secrets.ecr_repository }}
+        BUILD_ARGS_JSON: ${{ inputs.build_args }}
       run: |
+        # Parse build args from JSON and construct --build-arg flags
+        BUILD_ARG_FLAGS=""
+        if [ "$BUILD_ARGS_JSON" != "{}" ]; then
+          BUILD_ARG_FLAGS=$(echo "$BUILD_ARGS_JSON" | jq -r 'to_entries | map("--build-arg " + .key + "=" + .value) | join(" ")')
+        fi
+
         # Build with commit SHA tag
         docker build \
           -t $ECR_REPOSITORY:$IMAGE_TAG \
           -f ${{ inputs.dockerfile }} \
+          $BUILD_ARG_FLAGS \
           ${{ inputs.context }}
 
         # Push commit SHA tag
