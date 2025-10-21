@@ -40,6 +40,9 @@ on:
       ecr_repository:
         description: 'ECR repository URL (e.g., 123456789.dkr.ecr.us-east-2.amazonaws.com/myapp)'
         required: true
+      github_token:
+        description: 'GitHub token for accessing private repositories (optional)'
+        required: false
 
 jobs:
   build-and-push:
@@ -71,11 +74,17 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
         ECR_REPOSITORY: ${{ secrets.ecr_repository }}
         BUILD_ARGS_JSON: ${{ inputs.build_args }}
+        GITHUB_TOKEN: ${{ secrets.github_token }}
       run: |
         # Parse build args from JSON and construct --build-arg flags
         BUILD_ARG_FLAGS=""
         if [ "$BUILD_ARGS_JSON" != "{}" ]; then
           BUILD_ARG_FLAGS=$(echo "$BUILD_ARGS_JSON" | jq -r 'to_entries | map("--build-arg " + .key + "=" + .value) | join(" ")')
+        fi
+
+        # Add GITHUB_TOKEN to build args if provided
+        if [ -n "$GITHUB_TOKEN" ]; then
+          BUILD_ARG_FLAGS="$BUILD_ARG_FLAGS --build-arg GITHUB_TOKEN=$GITHUB_TOKEN"
         fi
 
         # Build with commit SHA tag
