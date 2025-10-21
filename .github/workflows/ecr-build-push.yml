@@ -40,7 +40,7 @@ on:
       ecr_repository:
         description: 'ECR repository URL (e.g., 123456789.dkr.ecr.us-east-2.amazonaws.com/myapp)'
         required: true
-      github_token:
+      gh_token:
         description: 'GitHub token for accessing private repositories (optional)'
         required: false
 
@@ -74,7 +74,7 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
         ECR_REPOSITORY: ${{ secrets.ecr_repository }}
         BUILD_ARGS_JSON: ${{ inputs.build_args }}
-        GITHUB_TOKEN: ${{ secrets.github_token }}
+        GITHUB_TOKEN: ${{ secrets.gh_token }}
       run: |
         # Parse build args from JSON and construct --build-arg flags
         BUILD_ARG_FLAGS=""
