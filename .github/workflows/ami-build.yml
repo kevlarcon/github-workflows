@@ -1,0 +1,89 @@
+name: Build AMI with Packer
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        description: 'AWS region'
+        required: false
+        type: string
+        default: 'us-east-2'
+      app_name:
+        description: 'Application name (for SSM parameter naming)'
+        required: true
+        type: string
+    secrets:
+      aws_deploy_role:
+        description: 'AWS IAM role ARN for OIDC authentication'
+        required: true
+    outputs:
+      ami_id:
+        description: 'The ID of the built AMI'
+        value: ${{ jobs.build-ami.outputs.ami_id }}
+
+jobs:
+  build-ami:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      ami_id: ${{ steps.store-ami.outputs.ami_id }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-region: ${{ inputs.aws_region }}
+        role-to-assume: ${{ secrets.aws_deploy_role }}
+        role-session-name: github-actions-ami-build
+
+    - name: Setup Packer
+      uses: hashicorp/setup-packer@main
+      with:
+        version: 'latest'
+
+    - name: Install kevcons
+      uses: kevlarcon/github-workflows/actions/install-kevcons@main
+
+    - name: Build AMI
+      run: |
+        echo "Building AMI for ${{ inputs.app_name }}..."
+        kevcons build
+
+    - name: Store AMI ID in SSM
+      id: store-ami
+      run: |
+        # Get AMI ID from manifest
+        AMI_ID=$(cat ~/.kevcons/${{ inputs.app_name }}/manifest.json | jq -r '.builds[0].artifact_id' | cut -d: -f2)
+        echo "Built AMI: $AMI_ID"
+
+        # Store in SSM
+        aws ssm put-parameter \
+          --name /${{ inputs.app_name }}/latest-ami-id \
+          --value $AMI_ID \
+          --overwrite \
+          --region ${{ inputs.aws_region }}
+
+        aws ssm put-parameter \
+          --name /${{ inputs.app_name }}/ami/${{ github.sha }} \
+          --value $AMI_ID \
+          --overwrite \
+          --region ${{ inputs.aws_region }}
+
+        # Output for next job
+        echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
+        echo "✓ AMI $AMI_ID stored in SSM"
+
+    - name: AMI build details
+      run: |
+        echo "AMI build completed successfully!"
+        echo "AMI ID: ${{ steps.store-ami.outputs.ami_id }}"
+        echo "Git SHA: ${{ github.sha }}"
+        echo "SSM Parameters:"
+        echo "  - /${{ inputs.app_name }}/latest-ami-id"
+        echo "  - /${{ inputs.app_name }}/ami/${{ github.sha }}"

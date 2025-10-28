@@ -1,0 +1,100 @@
+name: Deploy to ASG
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        description: 'AWS region'
+        required: false
+        type: string
+        default: 'us-east-2'
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      health_check_url:
+        description: 'Health check URL for smoke tests'
+        required: true
+        type: string
+      health_check_timeout_minutes:
+        description: 'How long to wait for health checks (minutes)'
+        required: false
+        type: number
+        default: 6
+    secrets:
+      aws_deploy_role:
+        description: 'AWS IAM role ARN for OIDC authentication'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-region: ${{ inputs.aws_region }}
+        role-to-assume: ${{ secrets.aws_deploy_role }}
+        role-session-name: github-actions-asg-deploy
+
+    - name: Install kevcons
+      uses: kevlarcon/github-workflows/actions/install-kevcons@main
+
+    - name: Run database migrations
+      run: |
+        # TODO: Run migrations via SSM RunCommand on an existing instance
+        # or set up GHA runner with VPN/bastion access to RDS
+        echo "⚠ Database migrations not yet implemented"
+        echo "TODO: Implement SSM RunCommand for migrations in future iteration"
+
+    - name: Deploy with kevcons
+      run: |
+        echo "Deploying ${{ inputs.app_name }} to ASG..."
+        kevcons deploy --yes
+
+    - name: Smoke tests
+      env:
+        HEALTH_URL: ${{ inputs.health_check_url }}
+        TIMEOUT_MINUTES: ${{ inputs.health_check_timeout_minutes }}
+      run: |
+        echo "Running smoke tests against $HEALTH_URL..."
+        echo "Will poll for $TIMEOUT_MINUTES minutes"
+
+        # Wait a bit for deployment to start
+        sleep 30
+
+        # Calculate number of attempts (30s intervals)
+        MAX_ATTEMPTS=$((TIMEOUT_MINUTES * 2))
+
+        # Check health endpoint
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          if curl -f -s "$HEALTH_URL" > /dev/null; then
+            echo "✓ Health check passed!"
+            echo "Deployment successful after $((i * 30))s"
+            exit 0
+          fi
+          echo "Attempt $i/$MAX_ATTEMPTS: Health check failed, waiting 30s..."
+          sleep 30
+        done
+
+        echo "✗ Health check failed after $TIMEOUT_MINUTES minutes"
+        echo "Deployment may have issues - check kevcons status and logs"
+        exit 1
+
+    - name: Deployment summary
+      if: success()
+      run: |
+        echo "✓ Deployment completed successfully!"
+        echo "Application: ${{ inputs.app_name }}"
+        echo "Region: ${{ inputs.aws_region }}"
+        echo "Health check: PASSED"
+        echo ""
+        echo "Use 'kevcons status' to monitor the deployment progress"
+        echo "Use 'kevcons logs --follow' to tail application logs"

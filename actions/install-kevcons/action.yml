@@ -1,0 +1,75 @@
+name: 'Install kevcons'
+description: 'Install kevcons CLI tool from source'
+inputs:
+  go-version:
+    description: 'Go version to use'
+    required: false
+    default: '1.21'
+  kevcons-ref:
+    description: 'Git ref (branch/tag/commit) to checkout'
+    required: false
+    default: 'main'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get kevcons commit SHA
+      id: kevcons-sha
+      shell: bash
+      run: |
+        # Get the actual commit SHA for the ref
+        SHA=$(git ls-remote https://github.com/kevlarcon/kevcons.git ${{ inputs.kevcons-ref }} | cut -f1)
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+        echo "Kevcons ref ${{ inputs.kevcons-ref }} resolves to: $SHA"
+
+    - name: Cache kevcons binary
+      id: cache-kevcons
+      uses: actions/cache@v4
+      with:
+        path: /tmp/kevcons-binary
+        key: kevcons-${{ runner.os }}-${{ steps.kevcons-sha.outputs.sha }}
+
+    - name: Setup Go
+      if: steps.cache-kevcons.outputs.cache-hit != 'true'
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Build kevcons
+      if: steps.cache-kevcons.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "Cache miss - building kevcons from source"
+        echo "Ref: ${{ inputs.kevcons-ref }}"
+        echo "SHA: ${{ steps.kevcons-sha.outputs.sha }}"
+
+        # Clone kevcons
+        git clone https://github.com/kevlarcon/kevcons.git /tmp/kevcons
+        cd /tmp/kevcons
+
+        # Checkout specified ref
+        git checkout ${{ inputs.kevcons-ref }}
+
+        # Build
+        go build -o kevcons
+
+        # Save to cache location
+        mkdir -p /tmp/kevcons-binary
+        cp kevcons /tmp/kevcons-binary/kevcons
+
+        echo "✓ kevcons built successfully"
+
+    - name: Install kevcons
+      shell: bash
+      run: |
+        if [ "${{ steps.cache-kevcons.outputs.cache-hit }}" = "true" ]; then
+          echo "✓ Restored kevcons from cache"
+        fi
+
+        # Install from cache location
+        sudo cp /tmp/kevcons-binary/kevcons /usr/local/bin/kevcons
+        sudo chmod +x /usr/local/bin/kevcons
+
+        # Verify
+        kevcons --version
+        echo "✓ kevcons installed successfully"
