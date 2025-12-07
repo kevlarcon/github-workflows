@@ -25,17 +25,18 @@ runs:
         # Debug: verify token is present
         echo "Token length: ${#GH_TOKEN}"
 
-        # Configure git credential helper to use the token
-        git config --global credential.helper store
-        echo "https://x-access-token:${GH_TOKEN}@github.com" > ~/.git-credentials
+        # Use GitHub CLI to get the commit SHA (it handles auth automatically)
+        SHA=$(curl -s -H "Authorization: token ${GH_TOKEN}" \
+          "https://api.github.com/repos/kevlarcon/kevcons/commits/${{ inputs.kevcons-ref }}" | \
+          jq -r '.sha')
 
-        # Get the actual commit SHA for the ref
-        SHA=$(git ls-remote https://github.com/kevlarcon/kevcons.git ${{ inputs.kevcons-ref }} | cut -f1)
+        if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+          echo "Failed to get SHA for ref ${{ inputs.kevcons-ref }}"
+          exit 1
+        fi
+
         echo "sha=$SHA" >> $GITHUB_OUTPUT
         echo "Kevcons ref ${{ inputs.kevcons-ref }} resolves to: $SHA"
-
-        # Clean up credentials file
-        rm -f ~/.git-credentials
 
     - name: Cache kevcons binary
       id: cache-kevcons
@@ -60,19 +61,16 @@ runs:
         echo "Ref: ${{ inputs.kevcons-ref }}"
         echo "SHA: ${{ steps.kevcons-sha.outputs.sha }}"
 
-        # Configure git credential helper for clone
-        git config --global credential.helper store
-        echo "https://x-access-token:${GH_TOKEN}@github.com" > ~/.git-credentials
+        # Download source as tarball using API (avoids git auth complexity)
+        curl -sL -H "Authorization: token ${GH_TOKEN}" \
+          "https://api.github.com/repos/kevlarcon/kevcons/tarball/${{ inputs.kevcons-ref }}" \
+          -o /tmp/kevcons.tar.gz
 
-        # Clone kevcons
-        git clone https://github.com/kevlarcon/kevcons.git /tmp/kevcons
-        cd /tmp/kevcons
+        # Extract and find the directory
+        mkdir -p /tmp/kevcons-src
+        tar -xzf /tmp/kevcons.tar.gz -C /tmp/kevcons-src --strip-components=1
 
-        # Clean up credentials
-        rm -f ~/.git-credentials
-
-        # Checkout specified ref
-        git checkout ${{ inputs.kevcons-ref }}
+        cd /tmp/kevcons-src
 
         # Build
         go build -o kevcons
