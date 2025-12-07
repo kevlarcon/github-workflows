@@ -92,6 +92,6 @@ runs:
         sudo cp /tmp/kevcons-binary/kevcons /usr/local/bin/kevcons
         sudo chmod +x /usr/local/bin/kevcons
 
-        # Verify
-        kevcons --version
+        # Verify by checking it runs (help output)
+        kevcons help > /dev/null
         echo "✓ kevcons installed successfully"
