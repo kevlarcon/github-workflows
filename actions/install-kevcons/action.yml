@@ -9,6 +9,9 @@ inputs:
     description: 'Git ref (branch/tag/commit) to checkout'
     required: false
     default: 'main'
+  github-token:
+    description: 'GitHub token with repo access for private kevcons repo'
+    required: true
 
 runs:
   using: "composite"
@@ -16,9 +19,11 @@ runs:
     - name: Get kevcons commit SHA
       id: kevcons-sha
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
       run: |
-        # Get the actual commit SHA for the ref
-        SHA=$(git ls-remote https://github.com/kevlarcon/kevcons.git ${{ inputs.kevcons-ref }} | cut -f1)
+        # Get the actual commit SHA for the ref using authenticated request
+        SHA=$(git ls-remote https://$GH_TOKEN@github.com/kevlarcon/kevcons.git ${{ inputs.kevcons-ref }} | cut -f1)
         echo "sha=$SHA" >> $GITHUB_OUTPUT
         echo "Kevcons ref ${{ inputs.kevcons-ref }} resolves to: $SHA"
 
@@ -38,13 +43,15 @@ runs:
     - name: Build kevcons
       if: steps.cache-kevcons.outputs.cache-hit != 'true'
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
       run: |
         echo "Cache miss - building kevcons from source"
         echo "Ref: ${{ inputs.kevcons-ref }}"
         echo "SHA: ${{ steps.kevcons-sha.outputs.sha }}"
 
-        # Clone kevcons
-        git clone https://github.com/kevlarcon/kevcons.git /tmp/kevcons
+        # Clone kevcons using token for authentication
+        git clone https://$GH_TOKEN@github.com/kevlarcon/kevcons.git /tmp/kevcons
         cd /tmp/kevcons
 
         # Checkout specified ref

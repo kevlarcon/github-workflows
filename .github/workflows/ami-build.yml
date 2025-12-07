@@ -16,6 +16,9 @@ on:
       aws_deploy_role:
         description: 'AWS IAM role ARN for OIDC authentication'
         required: true
+      gh_private_repo_token:
+        description: 'GitHub token for accessing private repos (kevcons)'
+        required: true
     outputs:
       ami_id:
         description: 'The ID of the built AMI'
@@ -49,6 +52,8 @@ jobs:
 
     - name: Install kevcons
       uses: kevlarcon/github-workflows/actions/install-kevcons@main
+      with:
+        github-token: ${{ secrets.gh_private_repo_token }}
 
     - name: Build AMI
       run: |
