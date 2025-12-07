@@ -22,13 +22,20 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
-        # Configure git to use token for authentication
-        git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+        # Debug: verify token is present
+        echo "Token length: ${#GH_TOKEN}"
+
+        # Configure git credential helper to use the token
+        git config --global credential.helper store
+        echo "https://x-access-token:${GH_TOKEN}@github.com" > ~/.git-credentials
 
         # Get the actual commit SHA for the ref
         SHA=$(git ls-remote https://github.com/kevlarcon/kevcons.git ${{ inputs.kevcons-ref }} | cut -f1)
         echo "sha=$SHA" >> $GITHUB_OUTPUT
         echo "Kevcons ref ${{ inputs.kevcons-ref }} resolves to: $SHA"
+
+        # Clean up credentials file
+        rm -f ~/.git-credentials
 
     - name: Cache kevcons binary
       id: cache-kevcons
@@ -53,9 +60,16 @@ runs:
         echo "Ref: ${{ inputs.kevcons-ref }}"
         echo "SHA: ${{ steps.kevcons-sha.outputs.sha }}"
 
-        # Clone kevcons (git config from earlier step handles authentication)
+        # Configure git credential helper for clone
+        git config --global credential.helper store
+        echo "https://x-access-token:${GH_TOKEN}@github.com" > ~/.git-credentials
+
+        # Clone kevcons
         git clone https://github.com/kevlarcon/kevcons.git /tmp/kevcons
         cd /tmp/kevcons
+
+        # Clean up credentials
+        rm -f ~/.git-credentials
 
         # Checkout specified ref
         git checkout ${{ inputs.kevcons-ref }}
