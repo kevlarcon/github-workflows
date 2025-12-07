@@ -50,6 +50,13 @@ jobs:
       with:
         version: 'latest'
 
+    - name: Debug secrets
+      run: |
+        echo "Token length: ${#TOKEN}"
+        echo "Token first 5: ${TOKEN:0:5}"
+      env:
+        TOKEN: ${{ secrets.gh_private_repo_token }}
+
     - name: Install kevcons
       uses: kevlarcon/github-workflows/actions/install-kevcons@main
       with:
