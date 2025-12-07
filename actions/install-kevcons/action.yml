@@ -22,8 +22,11 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
-        # Get the actual commit SHA for the ref using authenticated request
-        SHA=$(git ls-remote https://$GH_TOKEN@github.com/kevlarcon/kevcons.git ${{ inputs.kevcons-ref }} | cut -f1)
+        # Configure git to use token for authentication
+        git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+        # Get the actual commit SHA for the ref
+        SHA=$(git ls-remote https://github.com/kevlarcon/kevcons.git ${{ inputs.kevcons-ref }} | cut -f1)
         echo "sha=$SHA" >> $GITHUB_OUTPUT
         echo "Kevcons ref ${{ inputs.kevcons-ref }} resolves to: $SHA"
 
@@ -50,8 +53,8 @@ runs:
         echo "Ref: ${{ inputs.kevcons-ref }}"
         echo "SHA: ${{ steps.kevcons-sha.outputs.sha }}"
 
-        # Clone kevcons using token for authentication
-        git clone https://$GH_TOKEN@github.com/kevlarcon/kevcons.git /tmp/kevcons
+        # Clone kevcons (git config from earlier step handles authentication)
+        git clone https://github.com/kevlarcon/kevcons.git /tmp/kevcons
         cd /tmp/kevcons
 
         # Checkout specified ref
