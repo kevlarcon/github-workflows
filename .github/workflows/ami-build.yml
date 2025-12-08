@@ -50,6 +50,33 @@ jobs:
       with:
         version: 'latest'
 
+    - name: Clone infrastructure-catalog
+      env:
+        GH_TOKEN: ${{ secrets.gh_private_repo_token }}
+      run: |
+        # Clone infrastructure-catalog for packer templates
+        echo "Cloning infrastructure-catalog..."
+        curl -sL -H "Authorization: token ${GH_TOKEN}" \
+          "https://api.github.com/repos/kevlarcon/infrastructure-catalog/tarball/main" \
+          -o /tmp/infrastructure-catalog.tar.gz
+
+        mkdir -p /opt/infrastructure-catalog
+        tar -xzf /tmp/infrastructure-catalog.tar.gz -C /opt/infrastructure-catalog --strip-components=1
+        echo "✓ infrastructure-catalog available at /opt/infrastructure-catalog"
+
+    - name: Initialize Packer plugins
+      run: |
+        # Find packer template and init plugins
+        if [ -f ".kevcons.yaml" ]; then
+          TEMPLATE=$(grep 'packer_template:' .kevcons.yaml | awk '{print $NF}')
+          if [ -n "$TEMPLATE" ] && [ -f "$TEMPLATE" ]; then
+            echo "Initializing Packer plugins for $TEMPLATE"
+            packer init "$TEMPLATE"
+          else
+            echo "No packer template found at $TEMPLATE, skipping init"
+          fi
+        fi
+
     - name: Debug secrets
       run: |
         echo "Token length: ${#TOKEN}"
