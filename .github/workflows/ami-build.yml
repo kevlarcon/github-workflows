@@ -107,12 +107,14 @@ jobs:
         aws ssm put-parameter \
           --name /${{ inputs.app_name }}/latest-ami-id \
           --value $AMI_ID \
+          --type String \
           --overwrite \
           --region ${{ inputs.aws_region }}
 
         aws ssm put-parameter \
           --name /${{ inputs.app_name }}/ami/${{ github.sha }} \
           --value $AMI_ID \
+          --type String \
           --overwrite \
           --region ${{ inputs.aws_region }}
 
